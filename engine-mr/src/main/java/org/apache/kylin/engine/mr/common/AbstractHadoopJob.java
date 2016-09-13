@@ -241,6 +241,7 @@ public abstract class AbstractHadoopJob extends Configured implements Tool {
 
             try {
                 String kafkaClientJarPath = ClassUtil.findContainingJar(Class.forName("org.apache.kafka.clients.consumer.KafkaConsumer"));
+                kylinDependency.append(",");
                 kylinDependency.append(kafkaClientJarPath).append(",");
                 logger.info("kafka jar file: " + kafkaClientJarPath);
 
