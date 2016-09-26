@@ -306,6 +306,8 @@ public abstract class AbstractHadoopJob extends Configured implements Tool {
             StringBuilder fileList = new StringBuilder();
 
             for (String fileName : fNameList) {
+                if (fileName == null || fileName.isEmpty())
+                    continue;
                 Path p = new Path(fileName);
                 if (fs.getFileStatus(p).isDirectory()) {
                     appendTmpDir(job, fileName);
