@@ -262,7 +262,7 @@ public abstract class AbstractHadoopJob extends Configured implements Tool {
                 logger.info("The directory '" + mrLibDir + "' for 'kylin.job.mr.lib.dir' does not exist!!!");
             }
         }
-
+        logger.info("kylinDependency" + kylinDependency.toString());
         setJobTmpJarsAndFiles(job, kylinDependency.toString());
 
         overrideJobConfig(job.getConfiguration(), kylinConf.getMRConfigOverride());
