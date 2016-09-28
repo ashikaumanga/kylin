@@ -23,13 +23,13 @@
     <!-- The basics. -->
     <artifactId>kylin-query</artifactId>
     <packaging>jar</packaging>
-    <name>Kylin:Query</name>
+    <name>Apache Kylin - Query</name>
     <description>kylin query engine based on Calcite</description>
 
     <parent>
         <groupId>org.apache.kylin</groupId>
         <artifactId>kylin</artifactId>
-        <version>1.5.4-SNAPSHOT</version>
+        <version>1.6.0-SNAPSHOT</version>
 
     </parent>
 

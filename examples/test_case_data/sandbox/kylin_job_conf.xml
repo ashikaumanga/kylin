@@ -26,11 +26,19 @@ limitations under the License. See accompanying LICENSE file.
 
     <!-- uncomment the following 5 properties to enable lzo compressing
 
+<<<<<<< HEAD
 	<property>
 		<name>mapred.compress.map.output</name>
 		<value>true</value>
 		<description>Compress map outputs</description>
 	</property>
+=======
+    <property>
+        <name>mapred.compress.map.output</name>
+        <value>true</value>
+        <description>Compress map outputs</description>
+    </property>
+>>>>>>> upstream/master
 
 	<property>
 		<name>mapred.map.output.compression.codec</name>
@@ -52,6 +60,7 @@ limitations under the License. See accompanying LICENSE file.
 		</description>
 	</property>
 
+<<<<<<< HEAD
 	<property>
 		<name>mapred.output.compression.type</name>
 		<value>BLOCK</value>
@@ -59,6 +68,13 @@ limitations under the License. See accompanying LICENSE file.
 	</property>
 
 	!-->
+=======
+    <property>
+        <name>mapred.output.compression.type</name>
+        <value>BLOCK</value>
+        <description>The compression type to use for job outputs</description>
+    </property>
+>>>>>>> upstream/master
 
     <property>
         <name>mapreduce.job.max.split.locations</name>

@@ -18,6 +18,9 @@
 
 package org.apache.kylin.cube;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,16 +33,12 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-import javax.annotation.Nullable;
-
 import org.apache.commons.lang3.StringUtils;
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.KylinConfigExt;
 import org.apache.kylin.common.persistence.JsonSerializer;
 import org.apache.kylin.common.persistence.ResourceStore;
 import org.apache.kylin.common.persistence.Serializer;
-import org.apache.kylin.common.restclient.Broadcaster;
-import org.apache.kylin.common.restclient.CaseInsensitiveStringCache;
 import org.apache.kylin.common.util.Dictionary;
 import org.apache.kylin.common.util.Pair;
 import org.apache.kylin.cube.model.CubeDesc;
@@ -51,9 +50,13 @@ import org.apache.kylin.dict.lookup.LookupStringTable;
 import org.apache.kylin.dict.lookup.SnapshotManager;
 import org.apache.kylin.dict.lookup.SnapshotTable;
 import org.apache.kylin.metadata.MetadataManager;
+import org.apache.kylin.metadata.cachesync.Broadcaster;
+import org.apache.kylin.metadata.cachesync.Broadcaster.Event;
+import org.apache.kylin.metadata.cachesync.CaseInsensitiveStringCache;
 import org.apache.kylin.metadata.model.SegmentStatusEnum;
 import org.apache.kylin.metadata.model.TableDesc;
 import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.project.ProjectInstance;
 import org.apache.kylin.metadata.project.ProjectManager;
 import org.apache.kylin.metadata.realization.IRealization;
 import org.apache.kylin.metadata.realization.IRealizationConstants;
@@ -65,8 +68,6 @@ import org.apache.kylin.source.SourceFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Collections2;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
@@ -131,8 +132,41 @@ public class CubeManager implements IRealizationProvider {
     private CubeManager(KylinConfig config) throws IOException {
         logger.info("Initializing CubeManager with config " + config);
         this.config = config;
-        this.cubeMap = new CaseInsensitiveStringCache<CubeInstance>(config, Broadcaster.TYPE.CUBE);
+        this.cubeMap = new CaseInsensitiveStringCache<CubeInstance>(config, "cube");
+        
+        // touch lower level metadata before registering my listener
         loadAllCubeInstance();
+        Broadcaster.getInstance(config).registerListener(new CubeSyncListener(), "cube");
+    }
+
+    private class CubeSyncListener extends Broadcaster.Listener {
+        @Override
+        public void onClearAll(Broadcaster broadcaster) throws IOException {
+            clearCache();
+        }
+
+        @Override
+        public void onProjectSchemaChange(Broadcaster broadcaster, String project) throws IOException {
+            for (IRealization real : ProjectManager.getInstance(config).listAllRealizations(project)) {
+                if (real instanceof CubeInstance) {
+                    reloadCubeLocal(real.getName());
+                }
+            }
+        }
+
+        @Override
+        public void onEntityChange(Broadcaster broadcaster, String entity, Event event, String cacheKey) throws IOException {
+            String cubeName = cacheKey;
+            
+            if (event == Event.DROP)
+                removeCubeLocal(cubeName);
+            else
+                reloadCubeLocal(cubeName);
+            
+            for (ProjectInstance prj : ProjectManager.getInstance(config).findProjects(RealizationType.CUBE, cubeName)) {
+                broadcaster.notifyProjectDataUpdate(prj.getName());
+            }
+        }
     }
 
     public List<CubeInstance> listAllCubes() {
@@ -843,39 +877,37 @@ public class CubeManager implements IRealizationProvider {
 
     private synchronized CubeInstance reloadCubeLocalAt(String path) {
         ResourceStore store = getStore();
+        CubeInstance cube;
 
-        CubeInstance cubeInstance;
         try {
-            cubeInstance = store.getResource(path, CubeInstance.class, CUBE_SERIALIZER);
+            cube = store.getResource(path, CubeInstance.class, CUBE_SERIALIZER);
+            checkNotNull(cube, "cube (at %s) not found", path);
 
-            CubeDesc cubeDesc = CubeDescManager.getInstance(config).getCubeDesc(cubeInstance.getDescName());
-            if (cubeDesc == null)
-                throw new IllegalStateException("CubeInstance desc not found '" + cubeInstance.getDescName() + "', at " + path);
+            String cubeName = cube.getName();
+            checkState(StringUtils.isNotBlank(cubeName), "cube (at %s) name must not be blank", path);
 
-            cubeInstance.setConfig((KylinConfigExt) cubeDesc.getConfig());
+            CubeDesc cubeDesc = CubeDescManager.getInstance(config).getCubeDesc(cube.getDescName());
+            checkNotNull(cubeDesc, "cube descriptor '%s' (for cube '%s') not found", cube.getDescName(), cubeName);
 
-            if (StringUtils.isBlank(cubeInstance.getName()))
-                throw new IllegalStateException("CubeInstance name must not be blank, at " + path);
+            if (!cubeDesc.getError().isEmpty()) {
+                cube.setStatus(RealizationStatusEnum.DESCBROKEN);
+                logger.warn("cube descriptor {} (for cube '{}') is broken", cubeDesc.getResourcePath(), cubeName);
 
-            if (cubeInstance.getDescriptor() == null)
-                throw new IllegalStateException("CubeInstance desc not found '" + cubeInstance.getDescName() + "', at " + path);
+            } else if (cube.getStatus() == RealizationStatusEnum.DESCBROKEN) {
+                cube.setStatus(RealizationStatusEnum.DISABLED);
+                logger.info("cube {} changed from DESCBROKEN to DISABLED", cubeName);
+            }
 
-            final String cubeName = cubeInstance.getName();
-            cubeMap.putLocal(cubeName, cubeInstance);
+            cube.setConfig((KylinConfigExt) cubeDesc.getConfig());
+            cubeMap.putLocal(cubeName, cube);
 
-            for (CubeSegment segment : cubeInstance.getSegments()) {
+            for (CubeSegment segment : cube.getSegments()) {
                 usedStorageLocation.put(cubeName.toUpperCase(), segment.getStorageLocationIdentifier());
             }
 
-            logger.debug("Reloaded new cube: " + cubeName + " with reference being" + cubeInstance + " having " + cubeInstance.getSegments().size() + " segments:" + StringUtils.join(Collections2.transform(cubeInstance.getSegments(), new Function<CubeSegment, String>() {
-                @Nullable
-                @Override
-                public String apply(CubeSegment input) {
-                    return input.getStorageLocationIdentifier();
-                }
-            }), ","));
+            logger.info("Reloaded cube {} being {} having {} segments", cubeName, cube, cube.getSegments().size());
+            return cube;
 
-            return cubeInstance;
         } catch (Exception e) {
             logger.error("Error during load cube instance, skipping : " + path, e);
             return null;
@@ -938,14 +970,6 @@ public class CubeManager implements IRealizationProvider {
             String scanTable = dictMgr.decideSourceData(cubeDesc.getModel(), col).getTable();
             if (cubeDesc.getModel().isFactTable(scanTable)) {
                 factDictCols.add(col);
-            }
-        }
-
-        // add partition column in all case
-        if (cubeDesc.getModel().getPartitionDesc() != null) {
-            TblColRef partitionCol = cubeDesc.getModel().getPartitionDesc().getPartitionDateColumnRef();
-            if (factDictCols.contains(partitionCol) == false) {
-                factDictCols.add(partitionCol);
             }
         }
         return factDictCols;

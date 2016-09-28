@@ -22,13 +22,13 @@
     <parent>
         <artifactId>kylin</artifactId>
         <groupId>org.apache.kylin</groupId>
-        <version>1.5.4-SNAPSHOT</version>
+        <version>1.6.0-SNAPSHOT</version>
 
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>kylin-assembly</artifactId>
-    <name>Kylin:Assembly</name>
+    <name>Apache Kylin - Assembly</name>
 
     <dependencies>
         <dependency>
@@ -180,6 +180,7 @@
                                     <exclude>io.netty:*</exclude>
                                     <exclude>org.apache.zookeeper:*</exclude>
                                     <exclude>net.sf.ehcache:*</exclude>
+                                    <exclude>org.apache.httpcomponents:*</exclude>
                                 </excludes>
                             </artifactSet>
                             <filters>

@@ -23,13 +23,13 @@
 
     <artifactId>kylin-server</artifactId>
     <packaging>war</packaging>
-    <name>Kylin:RESTServer</name>
+    <name>Apache Kylin - REST Server</name>
     <description>Kylin REST Service and RPC Server.</description>
 
     <parent>
         <groupId>org.apache.kylin</groupId>
         <artifactId>kylin</artifactId>
-        <version>1.5.4-SNAPSHOT</version>
+        <version>1.6.0-SNAPSHOT</version>
     </parent>
 
     <dependencies>

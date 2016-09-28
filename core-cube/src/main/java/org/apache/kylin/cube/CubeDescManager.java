@@ -23,26 +23,30 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.persistence.JsonSerializer;
 import org.apache.kylin.common.persistence.ResourceStore;
 import org.apache.kylin.common.persistence.Serializer;
-import org.apache.kylin.common.restclient.Broadcaster;
-import org.apache.kylin.common.restclient.CaseInsensitiveStringCache;
 import org.apache.kylin.cube.cuboid.Cuboid;
 import org.apache.kylin.cube.model.CubeDesc;
 import org.apache.kylin.cube.model.validation.CubeMetadataValidator;
 import org.apache.kylin.cube.model.validation.ValidateContext;
 import org.apache.kylin.metadata.MetadataConstants;
 import org.apache.kylin.metadata.MetadataManager;
+import org.apache.kylin.metadata.cachesync.Broadcaster;
+import org.apache.kylin.metadata.cachesync.Broadcaster.Event;
+import org.apache.kylin.metadata.cachesync.CaseInsensitiveStringCache;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.apache.kylin.metadata.realization.IRealization;
+import org.apache.kylin.metadata.realization.RealizationStatusEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Manager class for CubeDesc; extracted from #CubeManager
+ * 
  * @author shaoshi
- *
  */
 public class CubeDescManager {
 
@@ -90,8 +94,46 @@ public class CubeDescManager {
     private CubeDescManager(KylinConfig config) throws IOException {
         logger.info("Initializing CubeDescManager with config " + config);
         this.config = config;
-        this.cubeDescMap = new CaseInsensitiveStringCache<CubeDesc>(config, Broadcaster.TYPE.CUBE_DESC);
+        this.cubeDescMap = new CaseInsensitiveStringCache<CubeDesc>(config, "cube_desc");
+        
+        // touch lower level metadata before registering my listener
         reloadAllCubeDesc();
+        Broadcaster.getInstance(config).registerListener(new CubeDescSyncListener(), "cube_desc");
+    }
+    
+    private class CubeDescSyncListener extends Broadcaster.Listener {
+        
+        @Override
+        public void onClearAll(Broadcaster broadcaster) throws IOException {
+            clearCache();
+            Cuboid.clearCache();
+        }
+
+        @Override
+        public void onProjectSchemaChange(Broadcaster broadcaster, String project) throws IOException {
+            for (IRealization real : ProjectManager.getInstance(config).listAllRealizations(project)) {
+                if (real instanceof CubeInstance) {
+                    String descName = ((CubeInstance) real).getDescName();
+                    reloadCubeDescLocal(descName);        
+                }
+            }
+        }
+
+        @Override
+        public void onEntityChange(Broadcaster broadcaster, String entity, Event event, String cacheKey) throws IOException {
+            String cubeDescName = cacheKey;
+            CubeDesc cubeDesc = getCubeDesc(cubeDescName);
+            String modelName = cubeDesc == null ? null : cubeDesc.getModel().getName();
+            
+            if (event == Event.DROP)
+                removeLocalCubeDesc(cubeDescName);
+            else
+                reloadCubeDescLocal(cubeDescName);
+            
+            for (ProjectInstance prj : ProjectManager.getInstance(config).findProjectsByModel(modelName)) {
+                broadcaster.notifyProjectSchemaUpdate(prj.getName());
+            }
+        }
     }
 
     public CubeDesc getCubeDesc(String name) {
@@ -110,30 +152,36 @@ public class CubeDescManager {
      * @throws IOException
      */
     public CubeDesc reloadCubeDescLocal(String name) throws IOException {
+        // Broken CubeDesc is not allowed to be saved and broadcast.
+        CubeDesc ndesc = loadCubeDesc(CubeDesc.concatResourcePath(name), false);
 
-        // Save Source
-        String path = CubeDesc.concatResourcePath(name);
-
-        // Reload the CubeDesc
-        CubeDesc ndesc = loadCubeDesc(path);
-
-        // Here replace the old one
         cubeDescMap.putLocal(ndesc.getName(), ndesc);
         Cuboid.reloadCache(name);
+
+        // if related cube is in DESCBROKEN state before, change it back to DISABLED
+        CubeManager cubeManager = CubeManager.getInstance(config);
+        for (CubeInstance cube : cubeManager.getCubesByDesc(name)) {
+            if (cube.getStatus() == RealizationStatusEnum.DESCBROKEN) {
+                cubeManager.reloadCubeLocal(cube.getName());
+            }
+        }
+
         return ndesc;
     }
 
-    private CubeDesc loadCubeDesc(String path) throws IOException {
+    private CubeDesc loadCubeDesc(String path, boolean allowBroken) throws IOException {
         ResourceStore store = getStore();
         CubeDesc ndesc = store.getResource(path, CubeDesc.class, CUBE_DESC_SERIALIZER);
+        if (ndesc == null)
+            throw new IllegalArgumentException("No cube desc found at " + path);
 
-        if (StringUtils.isBlank(ndesc.getName())) {
-            throw new IllegalStateException("CubeDesc name must not be blank");
+        try {
+            ndesc.init(config, getMetadataManager().getAllTablesMap());
+        } catch (Exception e) {
+            ndesc.addError(e.getMessage());
         }
 
-        ndesc.init(config, getMetadataManager().getAllTablesMap());
-
-        if (ndesc.getError().isEmpty() == false) {
+        if (!allowBroken && !ndesc.getError().isEmpty()) {
             throw new IllegalStateException("Cube desc at " + path + " has issues: " + ndesc.getError());
         }
 
@@ -155,8 +203,8 @@ public class CubeDescManager {
 
         try {
             cubeDesc.init(config, getMetadataManager().getAllTablesMap());
-        } catch (IllegalStateException e) {
-            cubeDesc.addError(e.getMessage(), true);
+        } catch (Exception e) {
+            cubeDesc.addError(e.getMessage());
         }
         // Check base validation
         if (!cubeDesc.getError().isEmpty()) {
@@ -164,7 +212,7 @@ public class CubeDescManager {
         }
         // Semantic validation
         CubeMetadataValidator validator = new CubeMetadataValidator();
-        ValidateContext context = validator.validate(cubeDesc, true);
+        ValidateContext context = validator.validate(cubeDesc);
         if (!context.ifPass()) {
             return cubeDesc;
         }
@@ -200,14 +248,9 @@ public class CubeDescManager {
 
         List<String> paths = store.collectResourceRecursively(ResourceStore.CUBE_DESC_RESOURCE_ROOT, MetadataConstants.FILE_SURFIX);
         for (String path : paths) {
-            CubeDesc desc;
-            try {
-                desc = loadCubeDesc(path);
-            } catch (Exception e) {
-                logger.error("Error loading cube desc " + path, e);
-                continue;
-            }
-            if (path.equals(desc.getResourcePath()) == false) {
+            CubeDesc desc = loadCubeDesc(path, true);
+
+            if (!path.equals(desc.getResourcePath())) {
                 logger.error("Skip suspicious desc at " + path + ", " + desc + " should be at " + desc.getResourcePath());
                 continue;
             }
@@ -219,7 +262,7 @@ public class CubeDescManager {
             cubeDescMap.putLocal(desc.getName(), desc);
         }
 
-        logger.debug("Loaded " + cubeDescMap.size() + " Cube(s)");
+        logger.info("Loaded " + cubeDescMap.size() + " Cube(s)");
     }
 
     /**
@@ -241,17 +284,14 @@ public class CubeDescManager {
 
         try {
             desc.init(config, getMetadataManager().getAllTablesMap());
-        } catch (IllegalStateException e) {
-            desc.addError(e.getMessage(), true);
-            return desc;
-        } catch (IllegalArgumentException e) {
-            desc.addError(e.getMessage(), true);
+        } catch (Exception e) {
+            desc.addError(e.getMessage());
             return desc;
         }
 
         // Semantic validation
         CubeMetadataValidator validator = new CubeMetadataValidator();
-        ValidateContext context = validator.validate(desc, true);
+        ValidateContext context = validator.validate(desc);
         if (!context.ifPass()) {
             return desc;
         }
@@ -263,7 +303,7 @@ public class CubeDescManager {
         getStore().putResource(path, desc, CUBE_DESC_SERIALIZER);
 
         // Reload the CubeDesc
-        CubeDesc ndesc = loadCubeDesc(path);
+        CubeDesc ndesc = loadCubeDesc(path, false);
         // Here replace the old one
         cubeDescMap.put(ndesc.getName(), desc);
 

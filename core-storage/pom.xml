@@ -23,12 +23,12 @@
 
     <artifactId>kylin-core-storage</artifactId>
     <packaging>jar</packaging>
-    <name>Kylin:Core-Storage</name>
+    <name>Apache Kylin - Core Storage</name>
 
     <parent>
         <groupId>org.apache.kylin</groupId>
         <artifactId>kylin</artifactId>
-        <version>1.5.4-SNAPSHOT</version>
+        <version>1.6.0-SNAPSHOT</version>
 
     </parent>
 
