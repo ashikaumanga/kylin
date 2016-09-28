@@ -241,6 +241,8 @@ public abstract class AbstractHadoopJob extends Configured implements Tool {
 
             try {
                 String kafkaClientJarPath = ClassUtil.findContainingJar(Class.forName("org.apache.kafka.clients.consumer.KafkaConsumer"));
+                if (kylinDependency.length() > 0)
+                    kylinDependency.append(",");
                 kylinDependency.append(kafkaClientJarPath).append(",");
                 logger.info("kafka jar file: " + kafkaClientJarPath);
 
@@ -305,6 +307,8 @@ public abstract class AbstractHadoopJob extends Configured implements Tool {
             StringBuilder fileList = new StringBuilder();
 
             for (String fileName : fNameList) {
+                if (fileName == null || fileName.isEmpty())
+                    continue;
                 Path p = new Path(fileName);
                 if (fs.getFileStatus(p).isDirectory()) {
                     appendTmpDir(job, fileName);
