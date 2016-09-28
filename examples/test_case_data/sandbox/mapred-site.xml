@@ -27,6 +27,7 @@
     </property>
 
     <property>
+<<<<<<< HEAD
         <name>mapred.job.map.memory.mb</name>
         <value>250</value>
     </property>
@@ -34,6 +35,15 @@
     <property>
         <name>mapred.job.reduce.memory.mb</name>
         <value>250</value>
+=======
+        <name>mapreduce.map.memory.mb</name>
+        <value>512</value>
+    </property>
+
+    <property>
+        <name>mapreduce.reduce.memory.mb</name>
+        <value>512</value>
+>>>>>>> upstream/master
     </property>
 
     <property>

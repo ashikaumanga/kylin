@@ -29,10 +29,12 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.KylinConfigExt;
@@ -357,16 +359,13 @@ public class CubeManager implements IRealizationProvider {
             Iterator<CubeSegment> iterator = newSegs.iterator();
             while (iterator.hasNext()) {
                 CubeSegment currentSeg = iterator.next();
-                boolean found = false;
                 for (CubeSegment toRemoveSeg : update.getToRemoveSegs()) {
                     if (currentSeg.getUuid().equals(toRemoveSeg.getUuid())) {
+                        logger.info("Remove segment " + currentSeg.toString());
+                        toRemoveResources.add(currentSeg.getStatisticsResourcePath());
                         iterator.remove();
-                        toRemoveResources.add(toRemoveSeg.getStatisticsResourcePath());
-                        found = true;
+                        break;
                     }
-                }
-                if (found == false) {
-                    logger.error("Segment '" + currentSeg.getName() + "' doesn't exist for remove.");
                 }
             }
 
@@ -374,16 +373,11 @@ public class CubeManager implements IRealizationProvider {
 
         if (update.getToUpdateSegs() != null) {
             for (CubeSegment segment : update.getToUpdateSegs()) {
-                boolean found = false;
                 for (int i = 0; i < newSegs.size(); i++) {
                     if (newSegs.get(i).getUuid().equals(segment.getUuid())) {
                         newSegs.set(i, segment);
-                        found = true;
                         break;
                     }
-                }
-                if (found == false) {
-                    logger.error("Segment '" + segment.getName() + "' doesn't exist for update.");
                 }
             }
         }
@@ -443,13 +437,8 @@ public class CubeManager implements IRealizationProvider {
     }
 
     public CubeSegment appendSegment(CubeInstance cube, long startDate, long endDate, long startOffset, long endOffset) throws IOException {
-        return appendSegment(cube, startDate, endDate, startOffset, endOffset, true);
-    }
 
-    public CubeSegment appendSegment(CubeInstance cube, long startDate, long endDate, long startOffset, long endOffset, boolean strictChecking) throws IOException {
-
-        if (strictChecking)
-            checkNoBuildingSegment(cube);
+        checkBuildingSegment(cube);
 
         if (cube.getDescriptor().getModel().getPartitionDesc().isPartitioned()) {
             // try figure out a reasonable start if missing
@@ -481,13 +470,31 @@ public class CubeManager implements IRealizationProvider {
     }
 
     public CubeSegment refreshSegment(CubeInstance cube, long startDate, long endDate, long startOffset, long endOffset) throws IOException {
-        checkNoBuildingSegment(cube);
+        checkBuildingSegment(cube);
 
         CubeSegment newSegment = newSegment(cube, startDate, endDate, startOffset, endOffset);
 
         Pair<Boolean, Boolean> pair = CubeValidator.fitInSegments(cube.getSegments(), newSegment);
         if (pair.getFirst() == false || pair.getSecond() == false)
             throw new IllegalArgumentException("The new refreshing segment " + newSegment + " does not match any existing segment in cube " + cube);
+
+        if (startOffset > 0 || endOffset > 0) {
+            CubeSegment toRefreshSeg = null;
+            for (CubeSegment cubeSegment : cube.getSegments()) {
+                if (cubeSegment.getSourceOffsetStart() == startOffset && cubeSegment.getSourceOffsetEnd() == endOffset) {
+                    toRefreshSeg = cubeSegment;
+                    break;
+                }
+            }
+
+            if (toRefreshSeg == null) {
+                throw new IllegalArgumentException("For streaming cube, only one segment can be refreshed at one time");
+            }
+
+            Map<String, String> partitionInfo = Maps.newHashMap();
+            partitionInfo.putAll(toRefreshSeg.getAdditionalInfo());
+            newSegment.setAdditionalInfo(partitionInfo);
+        }
 
         CubeUpdate cubeBuilder = new CubeUpdate(cube);
         cubeBuilder.setToAddSegs(newSegment);
@@ -502,7 +509,7 @@ public class CubeManager implements IRealizationProvider {
         if (startDate >= endDate && startOffset >= endOffset)
             throw new IllegalArgumentException("Invalid merge range");
 
-        checkNoBuildingSegment(cube);
+        checkBuildingSegment(cube);
         checkCubeIsPartitioned(cube);
 
         boolean isOffsetsOn = cube.getSegments().get(0).isSourceOffsetsOn();
@@ -628,9 +635,10 @@ public class CubeManager implements IRealizationProvider {
         }
     }
 
-    private void checkNoBuildingSegment(CubeInstance cube) {
-        if (cube.getBuildingSegments().size() > 0) {
-            throw new IllegalStateException("There is already a building segment!");
+    private void checkBuildingSegment(CubeInstance cube) {
+        int maxBuldingSeg = cube.getConfig().getMaxBuildingSegments();
+        if (cube.getBuildingSegments().size() >= maxBuldingSeg) {
+            throw new IllegalStateException("There is already " + cube.getBuildingSegments().size() + " building segment; ");
         }
     }
 
@@ -711,12 +719,28 @@ public class CubeManager implements IRealizationProvider {
             return null;
         }
 
-        if (cube.getBuildingSegments().size() > 0) {
-            logger.debug("Cube " + cube.getName() + " has bulding segment, will not trigger merge at this moment");
-            return null;
+        List<CubeSegment> buildingSegs = cube.getBuildingSegments();
+        if (buildingSegs.size() > 0) {
+            logger.debug("Cube " + cube.getName() + " has " + buildingSegs.size() + " building segments");
         }
 
-        List<CubeSegment> ready = cube.getSegments(SegmentStatusEnum.READY);
+        List<CubeSegment> readySegs = cube.getSegments(SegmentStatusEnum.READY);
+
+        List<CubeSegment> mergingSegs = Lists.newArrayList();
+        if (buildingSegs.size() > 0) {
+            
+            for (CubeSegment building : buildingSegs) {
+                // exclude those under-merging segs
+                for (CubeSegment ready : readySegs) {
+                    if (ready.getSourceOffsetStart() >= building.getSourceOffsetStart() && ready.getSourceOffsetEnd() <= building.getSourceOffsetEnd()) {
+                        mergingSegs.add(ready);
+                    }
+                }
+            }
+        }
+
+        // exclude those already under merging segments
+        readySegs.removeAll(mergingSegs);
 
         long[] timeRanges = cube.getDescriptor().getAutoMergeTimeRanges();
         Arrays.sort(timeRanges);
@@ -724,9 +748,9 @@ public class CubeManager implements IRealizationProvider {
         for (int i = timeRanges.length - 1; i >= 0; i--) {
             long toMergeRange = timeRanges[i];
 
-            for (int s = 0; s < ready.size(); s++) {
-                CubeSegment seg = ready.get(s);
-                Pair<CubeSegment, CubeSegment> p = findMergeOffsetsByDateRange(ready.subList(s, ready.size()), //
+            for (int s = 0; s < readySegs.size(); s++) {
+                CubeSegment seg = readySegs.get(s);
+                Pair<CubeSegment, CubeSegment> p = findMergeOffsetsByDateRange(readySegs.subList(s, readySegs.size()), //
                         seg.getDateRangeStart(), seg.getDateRangeStart() + toMergeRange, toMergeRange);
                 if (p != null && p.getSecond().getDateRangeEnd() - p.getFirst().getDateRangeStart() >= toMergeRange)
                     return Pair.newPair(p.getFirst().getSourceOffsetStart(), p.getSecond().getSourceOffsetEnd());
@@ -753,8 +777,9 @@ public class CubeManager implements IRealizationProvider {
         }
 
         for (CubeSegment seg : tobe) {
-            if (isReady(seg) == false)
-                throw new IllegalStateException("For cube " + cube + ", segment " + seg + " should be READY but is not");
+            if (isReady(seg) == false) {
+                logger.warn("For cube " + cube + ", segment " + seg + " isn't READY yet.");
+            }
         }
 
         List<CubeSegment> toRemoveSegs = Lists.newArrayList();

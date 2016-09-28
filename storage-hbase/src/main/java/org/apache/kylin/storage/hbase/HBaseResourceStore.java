@@ -70,7 +70,11 @@ public class HBaseResourceStore extends ResourceStore {
     final String tableNameBase;
     final String hbaseUrl;
 
+<<<<<<< HEAD
     private Connection getConnection() throws IOException {
+=======
+    HConnection getConnection() throws IOException {
+>>>>>>> upstream/master
         return HBaseConnection.get(hbaseUrl);
     }
 
@@ -360,8 +364,13 @@ public class HBaseResourceStore extends ResourceStore {
         return redirectPath;
     }
 
+<<<<<<< HEAD
     private Put buildPut(String resPath, long ts, byte[] row, byte[] content, Table table) throws IOException {
         int kvSizeLimit = this.kylinConfig.getHBaseKeyValueSize();
+=======
+    private Put buildPut(String resPath, long ts, byte[] row, byte[] content, HTableInterface table) throws IOException {
+        int kvSizeLimit = Integer.parseInt(getConnection().getConfiguration().get("hbase.client.keyvalue.maxsize", "10485760"));
+>>>>>>> upstream/master
         if (content.length > kvSizeLimit) {
             writeLargeCellToHdfs(resPath, content, table);
             content = BytesUtil.EMPTY_BYTE_ARRAY;

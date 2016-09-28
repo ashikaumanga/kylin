@@ -1,36 +1,20 @@
 /*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Licensed to the Apache Software Foundation (ASF) under one or more
- *
- *  contributor license agreements. See the NOTICE file distributed with
- *
- *  this work for additional information regarding copyright ownership.
- *
- *  The ASF licenses this file to You under the Apache License, Version 2.0
- *
- *  (the "License"); you may not use this file except in compliance with
- *
- *  the License. You may obtain a copy of the License at
- *
- *
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *
- *
- *  Unless required by applicable law or agreed to in writing, software
- *
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *
- *  See the License for the specific language governing permissions and
- *
- *  limitations under the License.
- *
- * /
- */
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
 
 package org.apache.kylin.source.kafka;
 
@@ -63,7 +47,6 @@ public final class TimedJsonStreamParser extends StreamingParser {
     private static final Logger logger = LoggerFactory.getLogger(TimedJsonStreamParser.class);
 
     private List<TblColRef> allColumns;
-    private boolean formatTs = false;//not used
     private final ObjectMapper mapper = new ObjectMapper();
     private String tsColName = "timestamp";
     private final JavaType mapType = MapType.construct(HashMap.class, SimpleType.construct(String.class), SimpleType.construct(String.class));
@@ -77,9 +60,6 @@ public final class TimedJsonStreamParser extends StreamingParser {
                     String[] parts = prop.split("=");
                     if (parts.length == 2) {
                         switch (parts[0]) {
-                        case "formatTs":
-                            this.formatTs = Boolean.valueOf(parts[1]);
-                            break;
                         case "tsColName":
                             this.tsColName = parts[1];
                             break;
@@ -94,7 +74,7 @@ public final class TimedJsonStreamParser extends StreamingParser {
             }
         }
 
-        logger.info("TimedJsonStreamParser with formatTs {} tsColName {}", formatTs, tsColName);
+        logger.info("TimedJsonStreamParser with tsColName {}", tsColName);
     }
 
     @Override
@@ -121,7 +101,6 @@ public final class TimedJsonStreamParser extends StreamingParser {
                 }
             }
 
-            logger.info("Streaming Message: " + result.toString());
             return new StreamingMessage(result, 0, t, Collections.<String, Object> emptyMap());
         } catch (IOException e) {
             logger.error("error", e);

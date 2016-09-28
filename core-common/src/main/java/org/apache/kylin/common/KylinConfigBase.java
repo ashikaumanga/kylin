@@ -570,10 +570,6 @@ abstract public class KylinConfigBase implements Serializable {
         return getOptionalIntArray("kylin.query.metrics.percentiles.intervals", dft);
     }
 
-    public int getHBaseKeyValueSize() {
-        return Integer.parseInt(this.getOptional("kylin.hbase.client.keyvalue.maxsize", "10485760"));
-    }
-
     public String getDefaultIGTStorage() {
         return getOptional("kylin.query.storage.default.gtstorage", "org.apache.kylin.storage.hbase.cube.v2.CubeHBaseEndpointRPC");
     }
@@ -717,6 +713,7 @@ abstract public class KylinConfigBase implements Serializable {
         Map<Integer, String> r = convertKeyToInteger(getPropertiesByPrefix("kylin.source.engine."));
         // ref constants in ISourceAware
         r.put(0, "org.apache.kylin.source.hive.HiveSource");
+        r.put(1, "org.apache.kylin.source.kafka.KafkaSource");
         return r;
     }
 
@@ -807,5 +804,9 @@ abstract public class KylinConfigBase implements Serializable {
 
     public String getCreateFlatHiveTableMethod() {
         return getOptional("kylin.hive.create.flat.table.method", "1");
+    }
+
+    public int getMaxBuildingSegments() {
+        return Integer.parseInt(getOptional("kylin.cube.building.segment.max", "2"));
     }
 }

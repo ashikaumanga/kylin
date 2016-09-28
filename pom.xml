@@ -54,8 +54,13 @@
         <hive-hcatalog.version>1.2.1</hive-hcatalog.version>
 
         <!-- HBase versions -->
+<<<<<<< HEAD
         <hbase-hadoop2.version>1.1.1</hbase-hadoop2.version>
         <kafka.version>0.8.1</kafka.version>
+=======
+        <hbase-hadoop2.version>0.98.8-hadoop2</hbase-hadoop2.version>
+        <kafka.version>0.10.0.0</kafka.version>
+>>>>>>> upstream/master
 
         <!-- Hadoop deps, keep compatible with hadoop2.version -->
         <zookeeper.version>3.4.6</zookeeper.version>
@@ -940,8 +945,8 @@
                             <id>validate</id>
                             <phase>validate</phase>
                             <configuration>
-                                <configLocation>checkstyle.xml</configLocation>
-                                <suppressionsLocation>checkstyle-suppressions.xml</suppressionsLocation>
+                                <configLocation>dev-support/checkstyle.xml</configLocation>
+                                <suppressionsLocation>dev-support/checkstyle-suppressions.xml</suppressionsLocation>
                                 <encoding>UTF-8</encoding>
                                 <consoleOutput>true</consoleOutput>
                                 <failsOnError>true</failsOnError>
@@ -1109,7 +1114,7 @@
                                     <tarLongFileMode>posix</tarLongFileMode>
                                     <runOnlyAtExecutionRoot>true</runOnlyAtExecutionRoot>
                                     <appendAssemblyId>true</appendAssemblyId>
-                                    <descriptor>src/main/config/assemblies/source-assembly.xml</descriptor>
+                                    <descriptor>assembly/src/main/config/assemblies/source-assembly.xml</descriptor>
                                     <finalName>apache-kylin-${project.version}</finalName>
                                 </configuration>
                             </execution>

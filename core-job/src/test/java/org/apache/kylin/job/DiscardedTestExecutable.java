@@ -14,4 +14,28 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+*/
+
+package org.apache.kylin.job;
+
+import org.apache.kylin.job.exception.ExecuteException;
+import org.apache.kylin.job.execution.ExecutableContext;
+import org.apache.kylin.job.execution.ExecuteResult;
+
+/**
  */
+public class DiscardedTestExecutable extends BaseTestExecutable {
+
+    public DiscardedTestExecutable() {
+        super();
+    }
+
+    @Override
+    protected ExecuteResult doWork(ExecutableContext context) throws ExecuteException {
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+        }
+        return new ExecuteResult(ExecuteResult.State.DISCARDED, "discarded");
+    }
+}

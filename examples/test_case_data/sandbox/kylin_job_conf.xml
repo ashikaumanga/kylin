@@ -34,12 +34,13 @@ limitations under the License. See accompanying LICENSE file.
 	</property>
 =======
     <property>
-        <name>mapred.compress.map.output</name>
+        <name>mapreduce.map.output.compress</name>
         <value>true</value>
         <description>Compress map outputs</description>
     </property>
 >>>>>>> upstream/master
 
+<<<<<<< HEAD
 	<property>
 		<name>mapred.map.output.compression.codec</name>
 		<value>com.hadoop.compression.lzo.LzoCodec</value>
@@ -59,6 +60,27 @@ limitations under the License. See accompanying LICENSE file.
 		<description>The compression codec to use for job outputs
 		</description>
 	</property>
+=======
+    <property>
+        <name>mapreduce.map.output.compress.codec</name>
+        <value>org.apache.hadoop.io.compress.SnappyCodec</value>
+        <description>The compression codec to use for map outputs
+        </description>
+    </property>
+
+    <property>
+        <name>mapreduce.output.fileoutputformat.compress</name>
+        <value>true</value>
+        <description>Compress the output of a MapReduce job</description>
+    </property>
+
+    <property>
+        <name>mapreduce.output.fileoutputformat.compress.codec</name>
+        <value>org.apache.hadoop.io.compress.SnappyCodec</value>
+        <description>The compression codec to use for job outputs
+        </description>
+    </property>
+>>>>>>> upstream/master
 
 <<<<<<< HEAD
 	<property>
@@ -70,7 +92,7 @@ limitations under the License. See accompanying LICENSE file.
 	!-->
 =======
     <property>
-        <name>mapred.output.compression.type</name>
+        <name>mapreduce.output.fileoutputformat.compress.type</name>
         <value>BLOCK</value>
         <description>The compression type to use for job outputs</description>
     </property>

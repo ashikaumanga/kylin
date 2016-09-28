@@ -88,6 +88,7 @@ public class DefaultChainedExecutable extends AbstractExecutable implements Chai
             boolean allSucceed = true;
             boolean hasError = false;
             boolean hasRunning = false;
+            boolean hasDiscarded = false;
             for (Executable task : jobs) {
                 final ExecutableState status = task.getStatus();
                 if (status == ExecutableState.ERROR) {
@@ -98,6 +99,9 @@ public class DefaultChainedExecutable extends AbstractExecutable implements Chai
                 }
                 if (status == ExecutableState.RUNNING) {
                     hasRunning = true;
+                }
+                if (status == ExecutableState.DISCARDED) {
+                    hasDiscarded = true;
                 }
             }
             if (allSucceed) {
@@ -110,9 +114,13 @@ public class DefaultChainedExecutable extends AbstractExecutable implements Chai
                 notifyUserStatusChange(executableContext, ExecutableState.ERROR);
             } else if (hasRunning) {
                 jobService.updateJobOutput(getId(), ExecutableState.RUNNING, null, null);
+            } else if (hasDiscarded) {
+                jobService.updateJobOutput(getId(), ExecutableState.DISCARDED, null, null);
             } else {
                 jobService.updateJobOutput(getId(), ExecutableState.READY, null, null);
             }
+        } else if (result.discarded()) {
+            jobService.updateJobOutput(getId(), ExecutableState.DISCARDED, null, result.output());
         } else {
             setEndTime(System.currentTimeMillis());
             jobService.updateJobOutput(getId(), ExecutableState.ERROR, null, result.output());
