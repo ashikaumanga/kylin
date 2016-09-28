@@ -54,13 +54,8 @@
         <hive-hcatalog.version>1.2.1</hive-hcatalog.version>
 
         <!-- HBase versions -->
-<<<<<<< HEAD
         <hbase-hadoop2.version>1.1.1</hbase-hadoop2.version>
         <kafka.version>0.8.1</kafka.version>
-=======
-        <hbase-hadoop2.version>0.98.8-hadoop2</hbase-hadoop2.version>
-        <kafka.version>0.10.0.0</kafka.version>
->>>>>>> upstream/master
 
         <!-- Hadoop deps, keep compatible with hadoop2.version -->
         <zookeeper.version>3.4.6</zookeeper.version>
